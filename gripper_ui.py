@@ -164,7 +164,9 @@ class GripperUI:
             try:
                 if cmd == "connect":
                     _, port, slave = msg
-                    g = LebaiGripper(port=port, slave=slave)
+                    # 短 timeout：裝置冇回應時快速失敗，唔會塞住指令隊列
+                    # short timeout so a silent device fails fast and never jams the queue
+                    g = LebaiGripper(port=port, slave=slave, timeout=0.3)
                     g.connect()
                     self.ui_q.put(("connected", True, f"已連接 Connected: {port} (slave {slave})"))
                 elif cmd == "disconnect":
@@ -202,9 +204,11 @@ class GripperUI:
 
     # ---------------------------------------------------------- UI updates
     def _poll_status(self) -> None:
-        if self.connected:
+        # 隊列有嘢未處理就 skip 今次 poll，避免裝置冇回應時指令堆積
+        # skip this tick if the queue is busy — prevents command pile-up on a silent device
+        if self.connected and self.cmd_q.empty():
             self.cmd_q.put(("poll",))
-        self.root.after(POLL_MS, self._poll_status)
+        self._after_poll = self.root.after(POLL_MS, self._poll_status)
 
     def _drain_ui_queue(self) -> None:
         try:
@@ -225,7 +229,7 @@ class GripperUI:
                     self._log(msg[1])
         except queue.Empty:
             pass
-        self.root.after(50, self._drain_ui_queue)
+        self._after_drain = self.root.after(50, self._drain_ui_queue)
 
     def _log(self, text: str) -> None:
         self.log.config(state="normal")
@@ -234,6 +238,14 @@ class GripperUI:
         self.log.config(state="disabled")
 
     def _on_close(self) -> None:
+        # 取消 pending 嘅 after callbacks，避免 destroy 後 Tcl 報 invalid command name
+        # cancel pending after callbacks so Tcl doesn't complain after destroy
+        for aid in (getattr(self, "_after_poll", None), getattr(self, "_after_drain", None), self._pos_after_id):
+            if aid:
+                try:
+                    self.root.after_cancel(aid)
+                except tk.TclError:
+                    pass
         self.cmd_q.put(("shutdown",))
         self.root.after(200, self.root.destroy)
 
