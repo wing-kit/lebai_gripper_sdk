@@ -6,6 +6,10 @@ Modbus RTU（RS485, 115200 8N1）Python SDK，基於 `pymodbus`。
 Python SDK for the Lebai gripper over Modbus RTU (RS485, 115200 8N1), built on `pymodbus`.
 Protocol reference: Lebai Gripper Communication Protocol V1 (protocol and external-wiring documents included under `docs/`).
 
+> **🦾 xArm 整合 | xArm integration**：經 xArm 手腕 RS485 控制夾爪（唔使 USB 轉接器）—
+> 見 [`xarm/`](xarm/)（driver `lebai_gripper_xarm.py` + Studio websocket 後備路徑 +
+> firmware v2.7.1 排查記錄 [`xarm/FINDINGS.md`](xarm/FINDINGS.md)）
+
 ---
 
 ## 安裝 | Installation
