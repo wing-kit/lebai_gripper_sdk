@@ -107,11 +107,21 @@ class StudioRS485:
         return (b[3] << 8) | b[4]
 
     def write_reg(self, reg: int, value: int, slave: int = 1) -> None:
+        """Write one register (FC16).
+
+        On firmware v2.7.1 the gripper *does* move, but the controller often
+        returns ``code=1`` with no ``recv`` (RX timeout). Treat that as
+        fire-and-forget success for writes; reads still need a real reply.
+        """
         code, recv = self.send_hex(
             "{:02X} 10 {:02X} {:02X} 00 01 02 {:02X} {:02X}".format(
                 slave, reg >> 8, reg & 0xFF, value >> 8, value & 0xFF))
-        if code != 0:
-            raise RuntimeError(f"write {reg:#06x}={value} failed (code={code})")
+        if code == 0:
+            return
+        if code == 1 and recv is None:
+            # TX reached the bus (motion confirmed) but no Modbus echo/RX
+            return
+        raise RuntimeError(f"write {reg:#06x}={value} failed (code={code})")
 
     def close(self):
         self.ws.close()

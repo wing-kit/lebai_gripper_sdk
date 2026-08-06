@@ -17,13 +17,14 @@ of a USB dongle.
 
 ## 結論 | TL;DR
 
-- **xArmStudio 內部 RS485 調試頁面可以控制夾爪**（用戶實測：send `01109C400001020064F572` 夾爪有反應）
-- **所有對外 SDK/程式路徑全部失敗**（C19 RS485 timeout）— Python SDK、C++ SDK、
-  甚至 1:1 複製 Studio websocket 協議都一樣
-- 接線已驗證（Studio 能通 = bus 物理層冇問題）→ 懷疑 **firmware v2.7.1 對外命令
-  （RS485_RTU cmd 124 / RS485_AGENT cmd 241）同 Studio 內部路徑行為唔同**
-- 懸而未決：用戶實測成功後，後續所有路徑（包括 websocket 複製）繼續失敗；
-  下一步係用 Chrome DevTools 捕獲 Studio 實際 send 嘅 WebSocket JSON 對照
+- **寫入可控制夾爪**（2026-08-06 用戶目視確認開/合/中位）：
+  - **xArm SDK** `getset_tgpio_modbus_data` FC16 寫 `0x9C40` → 夾爪會動
+    （API 仍回 code=3 / C19，全零 ret）
+  - **Studio WebSocket** `xarm_set_effector_modbus_rtu_cmd` 同樣可動
+    （code=1, recv=None）
+- **讀取仍失敗**：FC03 讀 `0x9C45` 一律 timeout → **單向控制（write-only）**
+- `lebai_gripper_xarm.py` 預設 `write_only=True`：寫入唔再因為冇 RX 而 raise
+- 接線／供電 OK；TX 有上 bus，controller 對外 RX 路徑不可靠（firmware v2.7.1）
 
 ## 已排除嘅變數 | Variables Eliminated
 

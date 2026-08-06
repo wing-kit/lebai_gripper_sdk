@@ -13,19 +13,20 @@ Usage (library):
     from lebai_gripper_xarm import LebaiGripperXArm
 
     with LebaiGripperXArm("192.168.23.227") as g:
-        print(g.status())
         g.set_position(100)          # open fully
-        g.wait_done(target=100)
-        print(g.get_position())
+        g.set_position(0)            # close
+
+    # Reads need Modbus RX; on firmware v2.7.1 that often times out, so
+    # write_only=True (default) treats missing replies as OK for writes.
 
 Usage (CLI — same subcommands as lebai_gripper.py):
 
-    python lebai_gripper_xarm.py --ip 192.168.23.227 status
     python lebai_gripper_xarm.py --ip 192.168.23.227 position 50
+    python lebai_gripper_xarm.py --ip 192.168.23.227 position 100
 
 Note: position/force/speed values are 0-100 percentages, identical to the
 serial version. Requires firmware with tool RS485 Modbus support
-(tested on controller v2.7.1, xArm 6 / XI1300).
+(tested on controller v2.7.1, xArm 6 / XI1300 — write-only on that build).
 """
 
 from __future__ import annotations
@@ -38,6 +39,10 @@ from xarm.wrapper import XArmAPI
 
 from lebai_gripper import Reg, GripperError  # shared register map
 
+# Controller error / API codes seen when TX reaches the bus but RX fails
+_RX_FAIL_ARM_ERRS = (19, 111, 2, 3)
+_RX_FAIL_API_CODES = (1, 3, 19, 111)
+
 
 class LebaiGripperXArm:
     def __init__(
@@ -47,12 +52,14 @@ class LebaiGripperXArm:
         baudrate: int = 115200,
         host_id: int = 9,           # 9 = tool-end RS485, 11 = control-box RS485
         set_baud: bool = True,      # False if baud already configured
+        write_only: bool = True,    # tolerate missing Modbus RX on writes
     ):
         self.ip = ip
         self.slave = slave
         self.baudrate = baudrate
         self.host_id = host_id
         self._set_baud = set_baud
+        self.write_only = write_only
         self.arm: XArmAPI | None = None
 
     # ------------------------------------------------------------------ conn
@@ -82,26 +89,37 @@ class LebaiGripperXArm:
         self.close()
 
     # ----------------------------------------------------------- modbus core
-    def _exchange(self, pdu: list[int]) -> list[int]:
+    def _exchange(self, pdu: list[int], *, require_reply: bool = True) -> list[int]:
         """Send PDU (no CRC — controller adds it). Returns response bytes."""
         assert self.arm is not None, "not connected"
-        if self.arm.error_code in (19, 111):  # stale RS485 timeout error
+        if self.arm.error_code in _RX_FAIL_ARM_ERRS:
             self.arm.clean_error()
         code, ret = self.arm.getset_tgpio_modbus_data(pdu, host_id=self.host_id)
-        if code != 0 or not ret:
-            raise GripperError(
-                f"Modbus exchange failed: code={code}, ret={ret}, "
-                f"arm_err={self.arm.error_code} (bus silent — check wiring/power)")
-        if ret[0] != self.slave:
-            raise GripperError(f"response from unexpected slave {ret[0]}")
-        if ret[1] & 0x80:
-            raise GripperError(f"Modbus exception {ret[2]} for fc {pdu[1]:#x}")
-        return ret
+        if self.arm.error_code in _RX_FAIL_ARM_ERRS:
+            self.arm.clean_error()
+
+        ok_reply = bool(ret) and code == 0 and not all(b == 0 for b in ret[:6])
+        if ok_reply:
+            if ret[0] != self.slave:
+                raise GripperError(f"response from unexpected slave {ret[0]}")
+            if ret[1] & 0x80:
+                raise GripperError(f"Modbus exception {ret[2]} for fc {pdu[1]:#x}")
+            return ret
+
+        if not require_reply and (
+            code in _RX_FAIL_API_CODES or self.arm.error_code in _RX_FAIL_ARM_ERRS or code != 0
+        ):
+            # TX likely left the controller; firmware just never returns a frame
+            return []
+
+        raise GripperError(
+            f"Modbus exchange failed: code={code}, ret={ret}, "
+            f"arm_err={self.arm.error_code} (bus silent — check wiring/power)")
 
     def _read(self, reg: Reg) -> int:
         ret = self._exchange([
             self.slave, 0x03, int(reg) >> 8, int(reg) & 0xFF, 0x00, 0x01,
-        ])
+        ], require_reply=True)
         # response: [addr, 0x03, byte_count(=2), hi, lo, (crc...)]
         if len(ret) < 5 or ret[2] != 0x02:
             raise GripperError(f"bad FC03 response for {reg:#06x}: {ret}")
@@ -112,7 +130,9 @@ class LebaiGripperXArm:
         ret = self._exchange([
             self.slave, 0x10, int(reg) >> 8, int(reg) & 0xFF,
             0x00, 0x01, 0x02, int(value) >> 8, int(value) & 0xFF,
-        ])
+        ], require_reply=not self.write_only)
+        if not ret:
+            return  # write-only: no echo
         # echo: [addr, 0x10, reg_hi, reg_lo, qty_hi, qty_lo, (crc...)]
         if len(ret) < 6 or ret[2] != (int(reg) >> 8) or ret[3] != (int(reg) & 0xFF):
             raise GripperError(f"bad FC10 echo for {reg:#06x}: {ret}")
@@ -221,6 +241,8 @@ def main(argv=None) -> int:
     p.add_argument("--baud", type=int, default=115200)
     p.add_argument("--control-box", action="store_true",
                    help="use control-box RS485 (host_id=11) instead of tool-end (9)")
+    p.add_argument("--require-reply", action="store_true",
+                   help="fail writes if Modbus RX times out (default: write-only)")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     p_pos = sub.add_parser("position"); p_pos.add_argument("value", type=int)
@@ -231,14 +253,22 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
 
     host_id = 11 if args.control_box else 9
-    with LebaiGripperXArm(args.ip, slave=args.slave, baudrate=args.baud, host_id=host_id) as g:
+    write_only = not args.require_reply
+    with LebaiGripperXArm(
+        args.ip, slave=args.slave, baudrate=args.baud,
+        host_id=host_id, write_only=write_only,
+    ) as g:
         if args.cmd == "status":
             for k, v in g.status().items():
                 print(f"{k}: {v}")
         elif args.cmd == "position":
             g.set_position(args.value)
-            g.wait_done(target=args.value)
-            print(f"position -> {g.get_position()}")
+            if write_only:
+                time.sleep(1.5)
+                print(f"position {args.value} commanded (write-only, no feedback)")
+            else:
+                g.wait_done(target=args.value)
+                print(f"position -> {g.get_position()}")
         elif args.cmd == "force":
             g.set_force(args.value)
             print("force set")
@@ -247,8 +277,12 @@ def main(argv=None) -> int:
             print("speed set")
         elif args.cmd == "init":
             g.find_stroke()
-            g.wait_done(timeout=30)
-            print("find stroke done")
+            if write_only:
+                time.sleep(5)
+                print("find stroke commanded (write-only)")
+            else:
+                g.wait_done(timeout=30)
+                print("find stroke done")
         elif args.cmd == "auto-init":
             mode = {"off": 1, "off-save": 2, "on-save": 3}[args.mode]
             g.set_auto_find_stroke(mode)

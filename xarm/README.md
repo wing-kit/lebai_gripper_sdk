@@ -9,8 +9,8 @@ Drive the Lebai gripper through the xArm tool-end RS485 — no USB adapter neede
 
 | 路徑 | 檔案 | 狀態 |
 |---|---|---|
-| **xArm SDK**（`getset_tgpio_modbus_data`, port 30001） | `../lebai_gripper_xarm.py`, `demo_gripper.py`, `scan_gripper.py` | firmware v2.7.1 上 C19 timeout — 見 `FINDINGS.md` |
-| **xArmStudio WebSocket**（port 18333，同 Studio 調試頁同一路徑） | `studio_ws_gripper.py` | 已逆向協議；目前一樣 timeout，調查中 |
+| **xArm SDK**（`getset_tgpio_modbus_data`）★ 可用 | `../lebai_gripper_xarm.py`, `demo_gripper.py` | **寫入可動夾爪**（write-only；讀取仍 timeout） |
+| **xArmStudio WebSocket**（port 18333） | `studio_ws_gripper.py` | 同樣 write-only 可用 |
 
 ## 用法 | Usage
 
