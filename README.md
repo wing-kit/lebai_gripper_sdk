@@ -27,18 +27,15 @@ uv run --no-project --with pymodbus --with pyserial lebai_gripper.py status
 
 ### 外接線對照 | External Wiring
 
-> ⚠️ 待確認 — 原文件為圖像格式，暫未能提取；確認後補上。
-> 接線前請核對，接錯 24V/RS485 可能損壞硬件。
->
-> ⚠️ TBD — the source wiring document is image-based and could not be extracted reliably.
+> ⚠️ 接線前請核對，接錯 24V/RS485 可能損壞硬件。
 > Verify before wiring; incorrect 24V/RS485 connections may damage the hardware.
 
 | 線色 Wire Color | 功能 Function | 接往 Connects To |
 |------|------|------|
-| 待補 TBD | 24V+ | 24V 電源正極 PSU + |
-| 待補 TBD | GND | 24V 電源負極 PSU − |
-| 待補 TBD | RS485 A (D+) | 轉接器 A Adapter A |
-| 待補 TBD | RS485 B (D−) | 轉接器 B Adapter B |
+| 🟤 啡色 Brown | 24V | 24V 電源正極 PSU + |
+| 🟢 綠色 Green | 0V (GND) | 24V 電源負極 PSU − |
+| 🟠 橙色 Orange | RS485 A (D+) | 轉接器 A Adapter A |
+| 🔵 藍色 Blue | RS485 B (D−) | 轉接器 B Adapter B |
 
 ## Library 用法 | Library Usage
 
