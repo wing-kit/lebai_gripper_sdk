@@ -25,6 +25,28 @@ uv run --no-project --with pymodbus --with pyserial lebai_gripper.py status
 - 夾爪需 **24V 供電**；RS485 A/B 線接好
 - Gripper requires **24V power**; RS485 A/B lines connected
 
+### udev 固定裝置名 | Persistent Device Name (udev)
+
+USB 轉接器每次插拔可能攞到唔同嘅 `ttyACM*` 編號。安裝 udev rule 後會固定出現 `/dev/modbus-gripper`：
+The USB adapter may get a different `ttyACM*` number on each replug. Installing the udev rule gives a stable `/dev/modbus-gripper` symlink:
+
+```bash
+# 一鍵安裝（會 reload udev 並驗證 symlink）| One-shot install (reloads udev and verifies the symlink)
+sudo ./scripts/install_udev.sh
+
+# 或手動 | Or manually:
+sudo cp udev/99-modbus_gripper_usb.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# 驗證 | Verify
+ls -l /dev/modbus-gripper   # 應指向 ttyACM* | should point to ttyACM*
+```
+
+> Rule 綁定 QinHeng 1a86:55d3 **serial 5ACC051540**；如果換咗另一隻轉接器，用
+> `udevadm info -a -n /dev/ttyACM* | grep serial` 搵新 serial 並更新 rule。
+> The rule matches QinHeng 1a86:55d3 **serial 5ACC051540**; if you swap to a different adapter,
+> find its serial with `udevadm info -a -n /dev/ttyACM* | grep serial` and update the rule.
+
 ### 外接線對照 | External Wiring
 
 > ⚠️ 接線前請核對，接錯 24V/RS485 可能損壞硬件。
