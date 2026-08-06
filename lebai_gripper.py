@@ -14,7 +14,7 @@ Usage (library):
     with LebaiGripper("/dev/modbus-gripper") as g:
         print(g.status())
         g.set_position(100)          # open fully
-        g.wait_done()
+        g.wait_done(target=100)
         print(g.get_position())
 
 Usage (CLI):
@@ -160,12 +160,40 @@ class LebaiGripper:
         """True = 未找行程（需要先初始化）"""
         return self._read(Reg.STROKE_PENDING) == 1
 
-    def wait_done(self, timeout: float = 15.0, poll: float = 0.1) -> bool:
-        """等到指令完成；TimeoutError 如果超時"""
+    def wait_done(
+        self,
+        timeout: float = 15.0,
+        poll: float = 0.1,
+        target: int | None = None,
+        tol: int = 2,
+        stable_secs: float = 0.8,
+    ) -> bool:
+        """等到指令完成；TimeoutError 如果超時。
+
+        完成條件（任一）:
+        1. CMD_DONE flag = 1（韌體要求位置 *完全* 等於目標先會 set）
+        2. 韌體 quirk 兜底：中間位置經常差 1 unit 唔 set flag（例如目標 50 停喺 49），
+           所以傳入 target 時，位置穩定 stable_secs 秒、而且喺 target±tol 內，
+           或者 torque>0（揾到嘢 / 頂住），都當完成。
+        """
         deadline = time.monotonic() + timeout
+        last_pos: int | None = None
+        stable_since: float | None = None
         while time.monotonic() < deadline:
             if self.is_done():
                 return True
+            if target is not None:
+                pos = self.get_position()
+                now = time.monotonic()
+                if pos == last_pos:
+                    if stable_since is None:
+                        stable_since = now
+                else:
+                    stable_since = None
+                last_pos = pos
+                if stable_since is not None and now - stable_since >= stable_secs:
+                    if abs(pos - target) <= tol or self.get_torque() > 0:
+                        return True
             time.sleep(poll)
         raise TimeoutError(f"gripper still busy after {timeout}s")
 
@@ -198,7 +226,7 @@ def main(argv=None) -> int:
                 print(f"{k}: {v}")
         elif args.cmd == "position":
             g.set_position(args.value)
-            g.wait_done()
+            g.wait_done(target=args.value)
             print(f"position -> {g.get_position()}")
         elif args.cmd == "force":
             g.set_force(args.value)

@@ -69,9 +69,9 @@ with LebaiGripper("/dev/modbus-gripper") as g:
     g.set_force(50)          # 力度 50% | force 50%
     g.set_speed(80)          # 速度 80% | speed 80%
     g.set_position(100)      # 全開 | fully open
-    g.wait_done()            # 等執行完 | wait until command completes
+    g.wait_done(target=100)  # 等執行完 | wait until command completes
     g.set_position(0)        # 全合 | fully close
-    g.wait_done()
+    g.wait_done(target=0)
 ```
 
 ## CLI
@@ -100,7 +100,7 @@ uv run --no-project --with pymodbus --with pyserial lebai_gripper.py auto-init o
 | `save_speed(0-100)` | 0x9C4B RW | 速度（斷電保存）Speed (persisted across power cycles) |
 | `set_auto_find_stroke(1/2/3)` | 0x9C9A W | 1=關 off, 2=關+保存 off+save, 3=恢復+保存 restore+save |
 | `set_address(1-10000)` | 0x9C9B W | 改 Modbus 地址（小心！）Change Modbus address (use with care!) |
-| `wait_done(timeout)` | — | 阻塞等 `is_done()` Block until `is_done()` |
+| `wait_done(target, timeout)` | — | 阻塞等完成 Block until done。建議傳 `target`：韌體嘅 CMD_DONE 要位置**完全**等於目標先 set，中間位置成日差 1 unit（如目標 50 停喺 49），傳 target 會用「位置穩定 ±2」兜底 Pass target: firmware CMD_DONE needs exact position match, mid positions often stop 1 unit short — target enables a "stable position ±2" fallback |
 | `status()` | — | 一次過讀晒 Read all status at once |
 
 ## 診斷工具 | Diagnostics
