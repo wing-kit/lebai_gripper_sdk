@@ -105,6 +105,23 @@ uv run --no-project --with pymodbus --with pyserial lebai_gripper.py auto-init o
 
 ## 診斷工具 | Diagnostics
 
+### Tkinter Demo UI
+
+`gripper_ui.py` — 圖形界面示範：連接、實時狀態（位置/力矩/完成/行程）、位置/力度/速度 slider、全開全合、找行程。
+GUI demo: connect, live status (position/torque/done/stroke), sliders for position/force/speed, open/close, find-stroke.
+
+```bash
+# 需要 tkinter（Ubuntu: sudo apt install python3-tk）
+uv run --no-project --with pymodbus --with pyserial gripper_ui.py
+# 或 | or:
+.venv/bin/python gripper_ui.py
+```
+
+> 串口操作喺背景 worker thread，UI 唔會 freeze；瞬態通訊錯誤會 log 落日誌欄而唔會冧 app。
+> Serial I/O runs in a background worker thread so the UI never freezes; transient bus errors are logged, not fatal.
+
+### scan.py
+
 `scan.py` — 自動掃描 slave address / baud rate 測試通訊（文件預設：slave 1, 115200 8N1）
 Auto-scans slave address / baud rate (protocol defaults: slave 1, 115200 8N1):
 
